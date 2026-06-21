@@ -63,10 +63,14 @@ def kaiser_filter(wc, atten, N=None):
     atten: float
         Attenuation (dB, positive)
     """
+    # scipy.optimize.fmin passes wc as a size-1 array; numpy>=2 no longer
+    # implicitly converts such arrays to scalars inside scipy, so coerce here.
+    wc = float(np.ravel(wc)[0])
     N_, beta = kaiserord(atten, wc / np.pi)
     N_ = 2 * (N_ // 2) + 1
     N = N if N is not None else N_
-    h = firwin(N, wc, window=('kaiser', beta), scale=False, nyq=np.pi)
+    # scipy>=1.12 removed firwin's `nyq` argument in favour of `fs` (= 2 * nyq).
+    h = firwin(N, wc, window=('kaiser', beta), scale=False, fs=2 * np.pi)
     return h
 
 

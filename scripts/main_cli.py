@@ -3,7 +3,8 @@ import sys
 from absl import app
 
 AVAILABLE_SCRIPTS = [
-    'preprocess', 'train', 'train_prior', 'export', 'export_onnx', 'remote_dataset', 'generate'
+    'preprocess', 'train', 'train_prior', 'export', 'export_coreml', 'verify_export',
+    'export_onnx', 'remote_dataset', 'generate'
 ]
 
 
@@ -32,10 +33,16 @@ def main():
         from scripts import train_prior
         sys.argv[0] = train_prior.__name__
         app.run(train_prior.main)
-    elif command == 'export':
-        from scripts import export
-        sys.argv[0] = export.__name__
-        app.run(export.main)
+    elif command in ('export', 'export_coreml'):
+        # the new-protocol exporter; uses argparse (not absl), call it directly
+        from scripts import export_coreml
+        sys.argv = ['rave export_coreml'] + sys.argv[2:]
+        export_coreml.main()
+    elif command == 'verify_export':
+        # uses argparse (not absl), so call it directly with the command stripped
+        from scripts import verify_export
+        sys.argv = ['rave verify_export'] + sys.argv[2:]
+        verify_export.main()
     elif command == 'preprocess':
         from scripts import preprocess
         sys.argv[0] = preprocess.__name__

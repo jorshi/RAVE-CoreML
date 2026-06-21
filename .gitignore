@@ -3,6 +3,7 @@
 lightning_logs/
 *.ckpt
 *.ts
+*.pte
 *libtorch*
 *.wav
 *.txt
@@ -13,3 +14,16 @@ runs
 __version__*
 PKG-INFO
 .junit-test-report.xml
+
+aw_guitarDm_v3
+
+.ipynb_checkpoints
+
+# uv / virtualenv
+.venv/
+venv/
+
+.claude/
+.github/
+.vscode/
+

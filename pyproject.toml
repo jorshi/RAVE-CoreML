@@ -1,0 +1,68 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "acids-rave"
+description = "RAVE: a Realtime Audio Variational autoEncoder"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11,<3.12"
+authors = [{ name = "Antoine CAILLON", email = "caillon@ircam.fr" }]
+dynamic = ["version"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+# Core dependencies needed to load a checkpoint and run inference (the demo path).
+# torch/torchaudio are intentionally unpinned so uv resolves the latest matched pair.
+dependencies = [
+    "torch",
+    "torchaudio",
+    "cached-conv>=2.5.0",
+    "gin-config",
+    "einops>=0.7",
+    "numpy",
+    "scipy>=1.11",
+    "scikit-learn",
+    "pytorch-lightning>=2.2",
+    "librosa>=0.10",
+    "soundfile>=0.12",
+    "GPUtil>=1.4.0",
+    "lmdb",
+    # required at gin-parse time: configs do `from rave import dataset` -> rave.transforms -> udls
+    "udls>=1.0.1",
+    "PyYAML>=6.0",
+    "tqdm>=4.64.1",
+    "absl-py>=1.2.0",
+    "matplotlib",
+    "tensorboard",
+    "ipykernel",
+    "ipython",
+]
+
+[project.optional-dependencies]
+# Model export to nn~ (Max/MSP, PureData) as an ExecuTorch .pte + sidecar JSON.
+# The pip wheel covers AOT export/lowering for all delegates (portable / xnnpack /
+# mlx / coreml; on macOS executorch pulls in coremltools). Executing an MLX-delegated
+# .pte additionally needs the C++ runtime built from source (Apple-Silicon + Xcode
+# Metal) -- that lives on the nn~ runtime side. neural-tilde provides
+# neural_tilde.LiveModule, the ExecuTorch .pte + sidecar emitter used by
+# scripts/export_coreml.py.
+export = ["executorch>=1.3", "neural-tilde"]
+# Development / test tooling.
+dev = ["pytest>=7.2.2", "Flask>=2.2.3"]
+
+[project.scripts]
+rave = "scripts.main_cli:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "rave.version.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["rave*", "scripts*"]
+
+[tool.setuptools.package-data]
+"rave.configs" = ["*.gin"]
