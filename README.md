@@ -1,15 +1,70 @@
+# RAVE - Core ML accelerated inference
+
+This is a fork of [RAVE (Realtime Audio Variational autoEncoder) ](https://github.com/acids-ircam/RAVE). It adds support for exporting RAVEs to [ExecuTorch](https://docs.pytorch.org/executorch/) for use with [**`neural.live~`**](https://github.com/jasper-zheng/neural_tilde) for hardware-accelerated inference on Apple Silicon.
+
 ## Installation (June-2026)
 
 This repository is managed with [uv](https://docs.astral.sh/uv/) and targets Python 3.11, `torch==2.12.0`. To set up an environment from a clone:
 
 ```bash
 uv sync
+source .venv/bin/activate
 ```
 
-This creates a `.venv` and installs the pinned dependencies from `uv.lock`. Run anything inside the environment with `uv run`, e.g. 
+This creates a `.venv` and installs the pinned dependencies from `uv.lock`. 
 
 
-Followings are the official readme from [RAVE](https://github.com/acids-ircam/RAVE) acids-ircam
+### Export
+
+Once trained, export your model to an [ExecuTorch](https://docs.pytorch.org/executorch/) program for `nn~`.
+
+#### Setting up the environment for export
+
+Export needs extra packages that are **not** installed by a plain `uv sync`, install them with:
+
+```bash
+uv sync --extra export
+source .venv/bin/activate
+```
+
+Then export, for example to Core ML for Apple Silicon:
+
+```bash
+uv run python scripts/export_coreml.py --run /path/to/your/run --backend coreml
+```
+
+This writes a **pair of files sharing a basename** as required by [`neural.live~`](https://github.com/jasper-zheng/neural_tilde):
+
+- `<name>.pte` — the ExecuTorch program with `encode` / `decode` / `forward` methods.
+- `<name>.json` — sidecar metadata (per-method channel counts, ratios and inlet/outlet
+  labels) that `nn~` reads alongside the `.pte`.
+
+Flags (`scripts/export_coreml.py`):
+
+- `--run PATH` *(required)* — the run directory or checkpoint to export.
+- `--backend {coreml,xnnpack,portable}`: delegate to lower to (default `coreml`).
+  `coreml` targets the Apple Neural Engine / GPU via Core ML; `xnnpack` is a optimised CPU backend; `portable` uses plain PyTorch.
+- `--buffer-size N` — audio-rate block size to export at (default 4096). Snapped up to the
+  nearest multiple of the model's encode ratio if it does not already divide evenly.
+- `--fidelity F` — for variational models, the fraction of latent variance kept (default
+  `0.95`; sets the number of exported latent dimensions).
+- `--name NAME` — output basename for the `.pte` / `.json` pair (default: the run name).
+- `--output DIR` — output directory (default: the run/checkpoint directory).
+- `--ema-weights` — load EMA weights instead of the raw weights, when the checkpoint has them.
+
+> **Core ML runtime** requires **macOS 15+ / iOS 18 on Apple Silicon** (the Neural Engine) at inference time.
+
+
+#### Streaming (real-time)
+
+Every export is **streaming** — there is no flag to toggle. `scripts/export_coreml.py` builds
+the model with the Caillon & Esling (2022) cached-convolution reconfiguration (`cached_conv`)
+so it processes consecutive audio blocks without buffer-boundary clicks. 
+
+
+
+## Belows are the official readme from [RAVE](https://github.com/acids-ircam/RAVE) acids-ircam
+
 ==================================================
 
 ![rave_logo](docs/rave.png)
@@ -194,87 +249,6 @@ Many other configuration files are available in `rave/configs` and can be combin
 </tbody>
 </table>
 
-### Export
-
-Once trained, export your model to an [ExecuTorch](https://docs.pytorch.org/executorch/) program for `nn~`.
-
-#### Setting up the environment for export
-
-Export needs extra packages that are **not** installed by a plain `uv sync`: ExecuTorch
-(which, on macOS, also pulls in `coremltools`) and
-[`neural-tilde`](https://pypi.org/project/neural-tilde/), which provides the
-`neural_tilde.LiveModule` exporter that emits the `.pte` + sidecar. These live in the
-optional `export` dependency group, so install them with:
-
-```bash
-uv sync --extra export
-```
-
-(Without uv, the equivalent is `pip install neural-tilde "executorch>=1.3"`.)
-
-Then export, for example to Core ML for Apple Silicon:
-
-```bash
-uv run python scripts/export_coreml.py --run /path/to/your/run --backend coreml
-```
-
-(`rave export ...` is the installed-CLI equivalent and forwards to the same script.)
-
-This writes a **pair of files sharing a basename** as required by the nn~ ExecuTorch
-protocol (`EXECUTORCH_PROTOCOL.md`):
-
-- `<name>.pte` — the ExecuTorch program with `encode` / `decode` / `forward` methods.
-- `<name>.json` — sidecar metadata (per-method channel counts, ratios and inlet/outlet
-  labels) that `nn~` reads alongside the `.pte`.
-
-Flags (`scripts/export_coreml.py`):
-
-- `--run PATH` *(required)* — the run directory or checkpoint to export.
-- `--backend {coreml,xnnpack,mlx,portable}` — delegate to lower to (default `coreml`).
-  `coreml` targets the Apple Neural Engine / GPU via Core ML; `mlx` targets Apple-Silicon
-  GPUs; `xnnpack` is a portable CPU backend; `portable` uses the reference runtime.
-- `--buffer-size N` — audio-rate block size to export at (default 4096). Snapped up to the
-  nearest multiple of the model's encode ratio if it does not already divide evenly.
-- `--fidelity F` — for variational models, the fraction of latent variance kept (default
-  `0.95`; sets the number of exported latent dimensions).
-- `--name NAME` — output basename for the `.pte` / `.json` pair (default: the run name).
-- `--output DIR` — output directory (default: the run/checkpoint directory).
-- `--ema-weights` — load EMA weights instead of the raw weights, when the checkpoint has them.
-
-The export is always **deterministic**: `encode` returns the latent mean and `decode` pads
-the discarded latent dimensions with zeros, so the methods are pure functions of their input
-and run on any ExecuTorch runtime (the MLX and portable runtimes do not ship `randn` kernels).
-
-> **Core ML runtime requirement** With `--backend coreml` the streaming `cached_conv`
-> caches are lowered to native Core ML *state*, so the exported program is stateful across
-> calls. Running such a `.pte` requires **macOS 15+ / iOS 18 on Apple Silicon** (the Neural
-> Engine) at inference time; AOT export itself only needs `coremltools` (installed by
-> `uv sync --extra export`).
-
-Verify an export against the protocol and PyTorch numerics with:
-
-```bash
-uv run python scripts/verify_export.py /path/to/your/run /path/to/export/dir --wav some_audio.wav
-```
-
-#### Streaming (real-time)
-
-Every export is **streaming** — there is no flag to toggle. `scripts/export_coreml.py` builds
-the model with the Caillon & Esling (2022) cached-convolution reconfiguration (`cached_conv`)
-so it processes consecutive audio blocks without buffer-boundary clicks. The result is a
-**stateful** program whose `cached_conv` caches persist across calls (lowered to ExecuTorch
-mutable buffers, or to native Core ML *state* with `--backend coreml`); the sidecar's
-`kind: "live"` marks this contract. The method signatures are unchanged. The `nn~` runtime
-must persist one method instance per object and reset state by reloading the method — see
-`neural_tilde`'s `EXECUTORCH_PROTOCOL.md`.
-
-> **Note** Settable attributes (e.g. AdaIN style transfer, priors) are not yet part of the
-> ExecuTorch path — planned for a later v2 increment. The previous TorchScript exporter
-> supported them.
-
-## Prior
-
-For discrete models, we redirect the user to the `msprior` library [here](https://github.com/caillonantoine/msprior). However, as this library is still experimental, the prior from version 1.x has been re-integrated in v2.3.
 
 ### Training
 
