@@ -207,7 +207,11 @@ def compute_latent_size(pretrained, fidelity: float) -> int:
     """Latent dimensionality kept at export, per encoder family."""
     encoder = pretrained.encoder
     if isinstance(encoder, rave.blocks.VariationalEncoder):
-        latent_size = max(np.argmax(pretrained.fidelity.numpy() > fidelity), 1)
+        include_latent = pretrained.fidelity.numpy() > fidelity
+        if np.all(~include_latent):
+            latent_size = len(pretrained.fidelity)
+        else:
+            latent_size = max(np.argmax(pretrained.fidelity.numpy() > fidelity), 1)
         return int(2 ** math.ceil(math.log2(latent_size)))
     if isinstance(encoder, rave.blocks.DiscreteEncoder):
         return int(encoder.num_quantizers)

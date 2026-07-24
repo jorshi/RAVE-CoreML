@@ -728,7 +728,8 @@ class VariationalEncoder(nn.Module):
         var = std * std
         logvar = torch.log(var)
 
-        z = torch.randn_like(mean) * std + mean
+        z = torch.rand(mean.shape, device=mean.device)
+        z = z * std + mean
         kl = (mean * mean + var - logvar - 1).sum(1).mean()
 
         return z, self.beta * kl
